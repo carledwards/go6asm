@@ -4,6 +4,10 @@ A 6502 cross-assembler in Go: a strict ca65-compatible syntax subset, a
 relocatable object format, a separable linker, and first-class WASM support
 for in-browser editors and simulators.
 
+**▶ Live playground:** <https://carledwards.github.io/go6asm/> — the
+assembler, linker and static analyzer, running entirely in your browser
+(WASM, no server).
+
 **Status:** Phases 1–3 complete and byte-verified against cc65 (ca65 + ld65),
 Klaus 6502 functional test passing; Phase 4 in progress. The design is in
 [`docs/DESIGN.md`](docs/DESIGN.md); read it before touching code.
