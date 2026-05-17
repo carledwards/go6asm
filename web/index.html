@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>go6asm — 6502 cross-assembler, in your browser</title>
+<meta name="description" content="A ca65-syntax 6502 cross-assembler, linker, and static analyzer that runs entirely in the browser via WebAssembly. No install, no server.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0b0c0e; --ink2:#101216; --panel:#121419; --panel2:#15171d;
+    --line:#2a2d36; --line-soft:#1d2027;
+    --fg:#e8e6df; --fg-dim:#9a988e; --fg-faint:#6b6a63;
+    --amber:#f4a52a; --amber-soft:#caa15a; --amber-glow:rgba(244,165,42,.16);
+    --cyan:#5fb3b3; --bad:#e0563f; --warn:#e0563f; --good:#7fae5a;
+    --mono:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:"Bricolage Grotesque",-apple-system,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--ink);color:var(--fg);
+    font-family:var(--disp);font-weight:400;font-size:15px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 78% -10%, rgba(244,165,42,.05), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+  }
+  a{color:var(--cyan);text-decoration:none;border-bottom:1px solid transparent}
+  a:hover{border-bottom-color:var(--cyan)}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  .mono{font-family:var(--mono)}
+
+  /* ── spec strip ───────────────────────────────────────────── */
+  header{border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--ink2),var(--ink));position:sticky;top:0;z-index:30;backdrop-filter:blur(6px)}
+  .strip{display:flex;align-items:center;gap:20px;padding:14px 0;flex-wrap:wrap}
+  .brand{font-family:var(--mono);font-weight:500;font-size:20px;letter-spacing:-.5px;color:var(--fg)}
+  .brand b{color:var(--amber)}
+  .chip{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    border:1px solid var(--line);border-radius:2px;padding:5px 9px;color:var(--fg-dim);white-space:nowrap;
+    display:inline-flex;align-items:center;gap:7px}
+  .chip .dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good)}
+  .chip.cpu{color:var(--amber-soft);border-color:#3a3322}
+  .strip .spacer{flex:1}
+  .aicopy{font-family:var(--mono);font-size:12px;letter-spacing:.03em;color:var(--amber);
+    background:rgba(244,165,42,.06);border:1px solid var(--amber-soft);border-radius:3px;
+    padding:8px 14px;cursor:pointer;transition:.14s}
+  .aicopy:hover{background:rgba(244,165,42,.13);box-shadow:0 0 16px var(--amber-glow)}
+  .aicopy.done{color:var(--good);border-color:#33402a;background:rgba(127,174,90,.08)}
+  .strip nav{display:flex;gap:18px;font-size:13px;font-family:var(--mono)}
+  .strip nav a{color:var(--fg-dim)}.strip nav a:hover{color:var(--amber)}
+
+  /* ── hero line ────────────────────────────────────────────── */
+  .hero{padding:40px 0 26px;border-bottom:1px solid var(--line-soft)}
+  .hero h1{font-family:var(--disp);font-weight:800;font-size:clamp(28px,4.4vw,52px);
+    line-height:1.04;letter-spacing:-.02em;margin:0 0 14px;max-width:18ch}
+  .hero h1 .em{color:var(--amber)}
+  .hero p{margin:0;color:var(--fg-dim);font-size:17px;max-width:62ch}
+  .kbd{font-family:var(--mono);font-size:.85em;border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:3px;padding:1px 6px;color:var(--fg)}
+
+  /* ── section headers (datasheet §) ───────────────────────── */
+  section{padding:34px 0;border-bottom:1px solid var(--line-soft)}
+  .sec-h{display:flex;align-items:baseline;gap:14px;margin:0 0 18px}
+  .sec-n{font-family:var(--mono);font-size:12px;color:var(--amber);letter-spacing:.1em}
+  .sec-t{font-family:var(--disp);font-weight:600;font-size:19px;letter-spacing:-.01em;margin:0}
+  .sec-d{color:var(--fg-faint);font-size:13px;margin-left:auto;font-family:var(--mono)}
+
+  /* ── pipeline strip ───────────────────────────────────────── */
+  .pipe{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+  .stage{flex:1;min-width:150px;border:1px solid var(--line);border-radius:4px;
+    background:var(--panel);padding:13px 14px;position:relative}
+  .stage .sn{font-family:var(--mono);font-size:11px;color:var(--amber);
+    border:1px solid #3a3322;border-radius:50%;width:20px;height:20px;display:flex;
+    align-items:center;justify-content:center;margin-bottom:9px}
+  .stage b{font-family:var(--disp);font-weight:600;font-size:14px;display:block;margin-bottom:5px}
+  .stage em{font-style:normal;color:var(--fg-faint);font-size:12px;line-height:1.45;display:block}
+  .stage code{font-family:var(--mono);color:var(--amber-soft);font-size:.92em}
+  .copy{margin-left:14px;font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+    background:transparent;color:var(--fg-faint);border:1px solid var(--line);border-radius:3px;
+    padding:5px 10px;cursor:pointer;transition:.14s;white-space:nowrap}
+  .copy:hover{color:var(--amber);border-color:var(--amber-soft)}
+  .copy.done{color:var(--good);border-color:#33402a}
+  .arr{display:flex;align-items:center;color:var(--line);font-family:var(--mono);font-size:18px}
+  @media(max-width:760px){.arr{display:none}.stage{min-width:46%}}
+
+  /* ── info chip / glossary popover ─────────────────────────── */
+  .i{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;
+    border:1px solid var(--line);border-radius:50%;font-family:var(--mono);font-size:10px;
+    color:var(--fg-faint);cursor:help;margin-left:6px;vertical-align:middle;position:relative;
+    transition:.15s;user-select:none}
+  .i:hover,.i:focus{color:var(--amber);border-color:var(--amber);outline:none}
+  .i .tip{position:absolute;left:50%;top:calc(100% + 9px);transform:translateX(-50%) translateY(4px);
+    width:280px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+    padding:11px 13px;font-family:var(--disp);font-size:12.5px;line-height:1.5;color:var(--fg-dim);
+    text-align:left;opacity:0;pointer-events:none;transition:.16s;z-index:50;
+    box-shadow:0 14px 40px rgba(0,0,0,.6)}
+  .i .tip b{color:var(--fg);font-weight:600}
+  .i .tip::before{content:"";position:absolute;left:50%;top:-5px;width:9px;height:9px;
+    background:var(--panel2);border-left:1px solid var(--line);border-top:1px solid var(--line);
+    transform:translateX(-50%) rotate(45deg)}
+  .i:hover .tip,.i:focus .tip{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ── controls ─────────────────────────────────────────────── */
+  .steplab{font-family:var(--mono);font-size:12px;margin:24px 0 9px;display:flex;
+    align-items:baseline;gap:11px;flex-wrap:wrap;border-top:1px solid var(--line-soft);padding-top:18px}
+  .steplab:first-of-type{border-top:0;padding-top:0;margin-top:6px}
+  .steplab b{color:var(--amber);letter-spacing:.07em;text-transform:uppercase;font-weight:500}
+  .steplab span{color:var(--fg-faint)}
+  .controls{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-faint)}
+  select,.chk{font-family:var(--mono);font-size:13px;background:var(--panel);color:var(--fg);
+    border:1px solid var(--line);border-radius:3px;padding:9px 11px;cursor:pointer;outline:none;transition:.15s}
+  select:hover{border-color:var(--amber-soft)}
+  select:focus{border-color:var(--amber)}
+  .chk{display:inline-flex;align-items:center;gap:8px;user-select:none}
+  .chk input{accent-color:var(--amber)}
+  .field.grow{flex:1;min-width:200px}
+
+  /* assemble = momentary hardware switch */
+  .go{font-family:var(--mono);font-weight:500;font-size:14px;letter-spacing:.04em;
+    background:var(--amber);color:#1a1304;border:none;border-radius:3px;
+    padding:11px 26px;cursor:pointer;position:relative;
+    box-shadow:0 3px 0 #9c6a12, 0 5px 14px var(--amber-glow);transition:transform .06s,box-shadow .06s}
+  .go:hover{filter:brightness(1.06)}
+  .go:active{transform:translateY(3px);box-shadow:0 0 0 #9c6a12,0 2px 8px var(--amber-glow)}
+
+  /* ── editor + targets ─────────────────────────────────────── */
+  .editor{position:relative}
+  textarea{width:100%;height:340px;resize:vertical;background:var(--ink2);color:var(--fg);
+    font-family:var(--mono);font-size:13px;line-height:1.65;border:1px solid var(--line);
+    border-radius:4px;padding:16px 16px 16px 16px;outline:none;tab-size:8}
+  textarea:focus{border-color:var(--amber-soft);box-shadow:0 0 0 1px var(--amber-glow)}
+
+  .target-card{margin-top:16px;border:1px solid var(--line);border-radius:4px;background:var(--panel);overflow:hidden}
+  .target-head{display:flex;align-items:baseline;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line-soft)}
+  .target-name{font-family:var(--disp);font-weight:600;font-size:15px}
+  .target-sub{color:var(--fg-faint);font-size:12.5px;margin-left:auto;font-family:var(--mono)}
+  .target-desc{padding:0 16px;color:var(--fg-dim);font-size:13px;margin:12px 0}
+  /* address-space bar — the signature element */
+  .map{padding:6px 16px 20px}
+  .map-scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--fg-faint);margin-bottom:5px}
+  .bar{position:relative;height:34px;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:repeating-linear-gradient(45deg,#0e0f12 0 6px,#101216 6px 12px)}
+  .reg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:10px;letter-spacing:.04em;overflow:hidden;white-space:nowrap;
+    border-right:1px solid rgba(0,0,0,.4);transition:opacity .5s}
+  .reg.ram{background:linear-gradient(180deg,#1c2e3a,#16242e);color:#9fc8d8}
+  .reg.io{background:linear-gradient(180deg,#1d3530,#172a26);color:#86c4b4}
+  .reg.rom{background:linear-gradient(180deg,#3a2f16,#2c2410);color:var(--amber-soft)}
+  .mark{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--amber);z-index:4}
+  .mark::after{content:attr(data-l);position:absolute;top:-17px;left:50%;transform:translateX(-50%);
+    font-family:var(--mono);font-size:9px;color:var(--amber);white-space:nowrap}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;padding:14px 16px 16px;font-family:var(--mono);font-size:11px;color:var(--fg-faint)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+  /* ── output grid ──────────────────────────────────────────── */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:920px){.grid{grid-template-columns:1fr}}
+  .panel{border:1px solid var(--line);border-radius:4px;background:var(--panel);position:relative}
+  .panel::before,.panel::after{content:"";position:absolute;width:7px;height:7px;border-color:var(--line);pointer-events:none}
+  .panel::before{top:-1px;left:-1px;border-left:1px solid;border-top:1px solid}
+  .panel::after{bottom:-1px;right:-1px;border-right:1px solid;border-bottom:1px solid}
+  .ph{display:flex;align-items:center;gap:6px;padding:11px 14px;border-bottom:1px solid var(--line-soft);
+    font-family:var(--mono);font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-dim)}
+  .ph .tag{margin-left:auto;font-size:10px;color:var(--fg-faint);text-transform:none;letter-spacing:0}
+  .pb{padding:14px;font-family:var(--mono);font-size:12px;line-height:1.6;white-space:pre-wrap;
+    overflow:auto;max-height:360px;color:var(--fg-dim)}
+  .pb.tall{max-height:520px}
+  .span2{grid-column:1/-1}
+  .err{color:var(--bad)}.ok{color:var(--good)}.note{color:var(--cyan)}
+
+  #status{font-family:var(--mono);font-size:12.5px;color:var(--fg-faint);margin:16px 0 0;min-height:1.4em}
+  #status .live{color:var(--amber)}
+  footer{padding:30px 0 50px;color:var(--fg-faint);font-family:var(--mono);font-size:12px;display:flex;gap:22px;flex-wrap:wrap}
+
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .rise{animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
+  @media(prefers-reduced-motion:reduce){.rise{animation:none}*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap strip">
+    <span class="brand">go<b>6</b>asm</span>
+    <span class="chip cpu" id="cpuChip">CPU · MOS 6502 (NMOS)</span>
+    <span class="chip"><span class="dot"></span> nothing installed · works offline</span>
+    <span class="spacer"></span>
+    <nav>
+      <a href="reference.html">Language ref</a>
+      <a href="https://github.com/carledwards/go6asm" target="_blank" rel="noopener">Source</a>
+      <a href="https://thecarledwards.com" target="_blank" rel="noopener">thecarledwards.com</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="hero rise">
+    <h1>A 6502 assembler, <span class="em">in your browser.</span></h1>
+    <p><em>Assembly</em> is the human-readable form of the individual instructions a CPU
+       executes. go6asm turns 6502 assembly into the exact bytes the chip would run, places
+       them in a target machine's memory, and checks the result for mistakes — all in this
+       page, nothing to install. <a href="reference.html#what-is-assembly">What is
+       assembly?</a> · Pick an example and press <span class="kbd">Assemble</span>. Hover any
+       <span class="i" tabindex="0">i<span class="tip"><b>Info.</b> A circled <i>i</i> marks
+       a term — hover or focus it for a plain-language definition.</span></span> for a
+       plain-language definition of a term.</p>
+  </div>
+
+  <!-- §00  PIPELINE -->
+  <section class="rise" style="animation-delay:.03s">
+    <div class="sec-h">
+      <span class="sec-n">§00</span>
+      <h2 class="sec-t">What happens when you press Assemble</h2>
+      <span class="sec-d">text → machine, in six stages</span>
+      <button class="copy" type="button">[ copy ]</button>
+    </div>
+    <div class="pipe">
+      <div class="stage"><span class="sn">1</span><b>Scan&nbsp;&amp;&nbsp;expand</b>
+        <em>Text becomes tokens; macros, <code>.if</code> and <code>.repeat</code> expand.</em></div>
+      <div class="arr">→</div>
+      <div class="stage"><span class="sn">2</span><b>Parse</b>
+        <em>Tokens become a syntax tree — one statement per line.</em></div>
+      <div class="arr">→</div>
+      <div class="stage"><span class="sn">3</span><b>Resolve</b>
+        <em>Every label and expression gets a value (ca65 32-bit math).</em></div>
+      <div class="arr">→</div>
+      <div class="stage"><span class="sn">4</span><b>Generate</b>
+        <em>Pick addressing modes, emit bytes — two passes so forward
+        references work.</em></div>
+      <div class="arr">→</div>
+      <div class="stage"><span class="sn">5</span><b>Link</b>
+        <em>Place segments at real addresses for the target; patch
+        relocations.</em></div>
+      <div class="arr">→</div>
+      <div class="stage"><span class="sn">6</span><b>Analyze</b>
+        <em>Trace reachable paths; flag bugs against the device map.</em></div>
+    </div>
+    <p style="color:var(--fg-faint);font-size:12.5px;font-family:var(--mono);margin:14px 0 0">
+      You can write just instructions and let go6asm fill in the rest, or spell out
+      every detail yourself — same language, same result, you decide how much to hand
+      off. The <a href="reference.html#layers">language reference</a> walks through it.
+    </p>
+  </section>
+
+  <!-- §01  SOURCE -->
+  <section class="rise" style="animation-delay:.05s">
+    <div class="sec-h">
+      <span class="sec-n">§01</span>
+      <h2 class="sec-t">Source</h2>
+      <span class="sec-d">write it · target it · assemble it</span>
+      <button class="copy" type="button">[ copy ]</button>
+    </div>
+
+    <div class="steplab"><b>Step 1</b> — the program
+      <span>pick an example to start from, or edit it freely</span></div>
+    <div class="controls">
+      <div class="field grow">
+        <label for="ex">Example
+          <span class="i" tabindex="0">i<span class="tip"><b>Examples.</b> Small programs
+          to start from. The <b>Catch a bug</b> one deliberately misbehaves, so you can
+          watch the static analyzer point it out.</span></span>
+        </label>
+        <select id="ex"></select>
+      </div>
+    </div>
+    <div class="editor">
+      <textarea id="src" spellcheck="false"></textarea>
+    </div>
+
+    <div class="steplab"><b>Step 2</b> — the target
+      <span>the machine you're building for — it decides the memory layout below</span></div>
+    <div class="controls">
+      <div class="field grow">
+        <label for="target">Target
+          <span class="i" tabindex="0">i<span class="tip"><b>Target.</b> A machine
+          definition: where code loads, where the CPU's reset/interrupt <i>vectors</i> are,
+          and which addresses are RAM, ROM or I/O. The bar below shows it.</span></span>
+        </label>
+        <select id="target"></select>
+      </div>
+    </div>
+
+    <!-- target card + address-space map -->
+    <div class="target-card">
+      <div class="target-head">
+        <span class="target-name" id="tName">—</span>
+        <span class="target-sub" id="tSub"></span>
+      </div>
+      <p class="target-desc" id="tDesc"></p>
+      <div class="map">
+        <div class="map-scale"><span>$0000</span><span>$4000</span><span>$8000</span><span>$C000</span><span>$FFFF</span></div>
+        <div class="bar" id="bar"></div>
+        <div class="legend">
+          <span><i class="sw" style="background:#1c2e3a"></i> RAM</span>
+          <span><i class="sw" style="background:#1d3530"></i> I/O (VIC/VIA)</span>
+          <span><i class="sw" style="background:#3a2f16"></i> ROM</span>
+          <span><i class="sw" style="background:repeating-linear-gradient(45deg,#0e0f12 0 4px,#15171d 4px 8px)"></i> unmapped</span>
+          <span><i class="sw" style="background:var(--amber)"></i> code load / reset vector</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="steplab"><b>Step 3</b> — assemble
+      <span>turn the source into bytes for that target, and check it</span></div>
+    <div class="controls">
+      <div class="field">
+        <button class="go" id="run">Assemble ▸</button>
+      </div>
+      <div class="field">
+        <label class="chk" title="Also produce the relocatable object file">
+          <input type="checkbox" id="obj"> emit .o6
+          <span class="i" tabindex="0">i<span class="tip"><b>.o6 object.</b> A
+          <i>relocatable object</i> — assembled code whose addresses aren't fixed yet,
+          ready to be combined and placed by the linker (like a <code>.o</code> file).
+          Rarely needed; leave it off for a normal build.</span></span>
+        </label>
+      </div>
+      <div class="field" style="margin-left:auto">
+        <button class="aicopy" id="aiCopy" type="button" title="Assemble, then copy the source + result as one LLM-ready, prompt-prefixed bundle">⧉ Copy all for AI</button>
+      </div>
+    </div>
+    <p id="status">Loading WebAssembly…</p>
+  </section>
+
+  <!-- §02  RESULT -->
+  <section class="rise" style="animation-delay:.1s">
+    <div class="sec-h">
+      <span class="sec-n">§02</span>
+      <h2 class="sec-t">Assembled result</h2>
+      <span class="sec-d" id="resMeta"></span>
+      <button class="copy" type="button">[ copy ]</button>
+    </div>
+
+    <div class="grid">
+      <div class="panel span2">
+        <div class="ph">Static analysis
+          <span class="i" tabindex="0">i<span class="tip"><b>Static analysis.</b> Without
+          running the program, go6asm traces every path the CPU can take from the reset/IRQ
+          <i>vectors</i> and flags trouble: writing to ROM, touching unmapped memory, hitting
+          a <code>BRK</code> or an illegal opcode. It's honest about what it can't follow
+          (indirect jumps, self-modifying code).</span></span>
+          <span class="tag" id="anTag"></span>
+        </div>
+        <div class="pb" id="findings">—</div>
+      </div>
+
+      <div class="panel span2">
+        <div class="ph">Annotated disassembly
+          <span class="i" tabindex="0">i<span class="tip"><b>Disassembly.</b> The finished
+          bytes decoded back into instructions, with your labels and — the point —
+          <b>your own source comments</b> threaded back in. Data is shown as
+          <code>.byte</code>, not mis-decoded, because the analyzer knows what's code.</span></span>
+          <span class="tag">addr · bytes · instruction · your comments</span>
+        </div>
+        <div class="pb tall" id="disasm">—</div>
+      </div>
+
+      <div class="panel">
+        <div class="ph">Image (hex)
+          <span class="i" tabindex="0">i<span class="tip"><b>Image.</b> The actual bytes
+          that would be loaded into the machine's memory, shown as a hex dump starting at
+          the load address.</span></span>
+        </div>
+        <div class="pb" id="image">—</div>
+      </div>
+
+      <div class="panel">
+        <div class="ph">Symbols
+          <span class="i" tabindex="0">i<span class="tip"><b>Symbols.</b> Named locations —
+          code <i>labels</i> and exported constants — with their resolved addresses. These
+          feed the disassembly and a debugger's memory view.</span></span>
+        </div>
+        <div class="pb" id="symbols">—</div>
+      </div>
+
+      <details class="panel span2" style="border-radius:4px">
+        <summary class="ph" style="cursor:pointer;list-style:none">Debug-info sidecars
+          <span class="i" tabindex="0">i<span class="tip"><b>Sidecars.</b>
+          <b>.lbl</b> is a VICE-monitor label file; <b>.sym</b> is go6asm's canonical
+          symbol JSON. Tools and debuggers consume these to show your names instead of
+          raw addresses.</span></span>
+          <span class="tag">click to expand</span>
+        </summary>
+        <div class="grid" style="padding:14px">
+          <div><div class="ph" style="border:0;padding:0 0 8px">out.lbl</div><div class="pb" id="lbl" style="border:1px solid var(--line-soft);border-radius:3px">—</div></div>
+          <div><div class="ph" style="border:0;padding:0 0 8px">out.sym</div><div class="pb" id="sym" style="border:1px solid var(--line-soft);border-radius:3px">—</div></div>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <footer>
+    <a href="reference.html">go6asm language reference</a>
+    <a href="https://github.com/carledwards/go6asm" target="_blank" rel="noopener">github.com/carledwards/go6asm</a>
+    <a href="https://thecarledwards.com" target="_blank" rel="noopener">thecarledwards.com</a>
+    <span>NMOS&nbsp;6502 · ca65-compatible · MIT</span>
+  </footer>
+</main>
+
+<script type="module">
+import { Assembler } from "./go6asm.js";
+
+/* ── targets: friendly names + "where things are" memory maps ── */
+const TARGETS = {
+  "sim-tui": {
+    name: "6502-sim-tui — teaching simulator",
+    sub: "code @ $E000 · vectors $FFFA",
+    desc: "The memory map of "
+        + "<a href='https://github.com/carledwards/6502-sim-tui' target='_blank' rel='noopener'>carledwards/6502-sim-tui</a>. "
+        + "Your program is an 8 KB ROM at $E000; "
+        + "RAM is $0000–$1FFF; the VIC display and VIA timer live in I/O at $A000–$DFFF; "
+        + "the 6502 reset/NMI/IRQ vectors sit at $FFFA. Layer-0 — just write instructions "
+        + "and go6asm infers the load address and synthesizes the vectors.",
+    regions:[["ram",0x0000,0x1FFF],["io",0xA000,0xDFFF],["rom",0xE000,0xFFFF]],
+    code:0xE000, vec:0xFFFC,
+  },
+  "lcm-32": {
+    name: "LCM-32 — bare-metal 6502 board",
+    sub: "code @ $E000 · vectors $FFFA",
+    desc: "<a href='https://github.com/carledwards/lcm-32' target='_blank' rel='noopener'>carledwards/lcm-32</a>: "
+        + "a real-hardware-style board (map from "
+        + "<a href='https://github.com/carledwards/6502-simulator' target='_blank' rel='noopener'>carledwards/6502-simulator</a>). "
+        + "8 KB RAM at $0000; two W65C22 VIAs at "
+        + "$6000 and $8000 (LEDs on the ports); 8 KB ROM at $E000; vectors $FFFA. "
+        + "No display — you talk to hardware through the VIA registers (VIA1_DDRA, "
+        + "VIA1_ORA, …). Layer-0: go6asm infers the load address and vectors.",
+    regions:[["ram",0x0000,0x1FFF],["io",0x6000,0x600F],["io",0x8000,0x800F],["rom",0xE000,0xFFFF]],
+    code:0xE000, vec:0xFFFC,
+  },
+  "flat-64k": {
+    name: "Flat 64 KB image",
+    sub: "code @ $0200 · vectors $FFFA",
+    desc: "One flat 64 KB memory image — a clean canvas. Code loads at $0200 and the "
+        + "vectors are at $FFFA. Good when you just want a raw 64K binary with a reset "
+        + "vector and no specific hardware.",
+    regions:[["ram",0x0000,0xFFFF]],
+    code:0x0200, vec:0xFFFC,
+  },
+  "c64": {
+    name: "Commodore 64 — .prg",
+    sub: "load @ $0801",
+    desc: "Builds a Commodore .prg loaded at $0801 (BASIC program start). Tick .o6 off "
+        + "and the byte-identical-to-ld65 output runs in VICE or on real hardware. Add a "
+        + "BASIC SYS stub for auto-run.",
+    regions:[["ram",0x0000,0xFFFF]],
+    code:0x0801, vec:null,
+  },
+  "": {
+    name: "Bare 6502 — flat, no platform",
+    sub: "code @ $0200 · no vectors",
+    desc: "No machine assumptions: just your bytes, loaded at $0200, no synthesized "
+        + "vectors. The simplest way to meet the CPU on its own terms and learn the "
+        + "instruction set.",
+    regions:[["ram",0x0000,0xFFFF]],
+    code:0x0200, vec:null,
+  },
+};
+
+/* ── curated examples ─────────────────────────────────────── */
+const EXAMPLES = {
+  "Hello — just instructions (Layer 0)": { target:"sim-tui", src:
+`; No .org, no .segment, no addresses — go6asm infers the $E000 load
+; address and synthesizes the reset vector. "RegCmd"/"CharBase" come
+; from the sim-tui symbol pack. This is Layer 0: meet the chip gently.
+
+        LDA #CmdClear          ; clear the screen
+        STA RegCmd
+        LDX #$00
+print:
+        LDA msg,X              ; next character
+        BEQ done
+        STA CharBase+240,X     ; row 6 of the character plane
+        LDA #$1E               ; navy bg, yellow fg
+        STA ColorBase+240,X
+        INX
+        JMP print
+done:
+        JMP done               ; park forever
+
+msg:    .byte "HELLO FROM go6asm", 0
+`},
+  "Bouncer — a real demo (symbols + comments)": { target:"sim-tui", src:
+`; A '*' bounces across row 6. Zero-page variables are named and
+; exported, so the disassembly and a debugger show X / DX, not $10.
+
+X  = $10               ; current X position 0..39
+DX = $11               ; direction: +1 right, -1 left
+.exportzp X
+.exportzp DX
+
+        LDA #CmdClear          ; clear the screen
+        STA RegCmd
+        LDX #20                ; start centred
+        STX X
+        LDA #$01               ; moving right
+        STA DX
+loop:
+        LDX X                  ; erase old cell
+        LDA #' '
+        STA CharBase+240,X
+        LDA DX                 ; step in the current direction
+        BPL right
+        DEX
+        JMP store
+right:  INX
+store:  STX X
+        LDA #'*'               ; draw the ball
+        STA CharBase+240,X
+        LDA #$1E
+        STA ColorBase+240,X
+        LDY #$FF               ; crude delay so motion is visible
+delay:  DEY
+        BNE delay
+        CPX #0                 ; bounce off the walls
+        BEQ flip
+        CPX #39
+        BEQ flip
+        JMP loop
+flip:   LDA DX                 ; dx = -dx
+        EOR #$FF
+        CLC
+        ADC #$01
+        STA DX
+        JMP loop
+`},
+  "Multi-segment + relocations": { target:"flat-64k", src:
+`; Code in one segment, data in another. References to 'msg' become
+; relocations the linker resolves once it places the segments. Tick
+; .o6 to see the relocatable object.
+
+.export reset
+.segment "CODE"
+reset:
+        LDX #$00
+copy:
+        LDA msg,X              ; cross-segment reference -> relocation
+        BEQ done
+        STA $0400,X            ; "screen"
+        INX
+        JMP copy
+done:
+        JMP done
+        .word msg              ; a .word relocation
+        .byte <msg, >msg       ; low / high byte relocations
+
+.segment "RODATA"
+msg:    .asciiz "RELOCATED!"
+`},
+  "Catch a bug — static analysis": { target:"sim-tui", src:
+`; Three classic mistakes. Press Assemble and read the
+; "Static analysis" panel — go6asm finds all of them without
+; running the program, judged against the sim-tui memory map.
+
+        LDA #$2A
+        STA $E010              ; (1) writing into ROM ($E000-$FFFF)
+        LDA #$00
+        STA $5000              ; (2) storing to unmapped memory
+        BRK                    ; (3) BRK reached on the normal path
+`},
+  "LCM-32 — binary counter (real board)": { target:"lcm-32", src:
+`; carledwards/lcm-32: blink the 8 LEDs on VIA #1 Port A as a binary
+; counter. Layer 0 — no .org/.segment; go6asm loads at $E000 and
+; synthesizes the vectors. Register names come from the lcm-32 pack
+; (VIA1_DDRA = $6003, VIA1_ORA = $6001). LEDs are active-low.
+
+        LDA #$FF
+        STA VIA1_DDRA      ; Port A: all pins outputs
+        LDA #$FF
+        STA VIA1_ORA       ; all LEDs off (driven high)
+top:
+        JSR delay
+        DEC VIA1_ORA       ; count down -> the LED pattern counts up
+        JMP top
+
+delay:
+        LDY #$01
+hi:     LDX #$0A
+lo:     DEX
+        BNE lo
+        DEY
+        BNE hi
+        RTS
+`},
+  "Macros & conditionals": { target:"flat-64k", src:
+`; Real ca65 metaprogramming: a parameterised macro and a build-time
+; switch. Define DEBUG with -D on the CLI; here it stays off.
+
+.macro POKE addr, val
+        LDA #val
+        STA addr
+.endmacro
+
+.export start
+start:
+        POKE $0400, $01        ; macro expands inline
+        POKE $0401, $02
+.ifdef DEBUG
+        BRK                    ; only assembled when DEBUG is set
+.endif
+        RTS
+`},
+};
+
+/* ── boot UI ──────────────────────────────────────────────── */
+const $ = (id)=>document.getElementById(id);
+const asm = new Assembler();
+
+const exSel=$("ex"), tSel=$("target");
+for(const k of Object.keys(EXAMPLES)){ const o=document.createElement("option"); o.textContent=k; exSel.appendChild(o); }
+const TORDER=["sim-tui","lcm-32","flat-64k","c64",""];
+for(const k of TORDER){ const o=document.createElement("option"); o.value=k; o.textContent=TARGETS[k].name; tSel.appendChild(o); }
+
+function drawMap(){
+  const t=TARGETS[tSel.value]; const bar=$("bar"); bar.innerHTML="";
+  $("tName").textContent=t.name; $("tSub").textContent=t.sub;
+  // t.desc is a static, authored string (no user input) — safe to
+  // render as HTML so repo references can be jump-out links.
+  $("tDesc").innerHTML=t.desc;
+  const pct=a=>(a/0xFFFF*100);
+  for(const [cls,lo,hi] of t.regions){
+    const d=document.createElement("div"); d.className="reg "+cls;
+    d.style.left=pct(lo)+"%"; d.style.width=(pct(hi)-pct(lo))+"%";
+    const lbl=cls.toUpperCase();
+    if(pct(hi)-pct(lo)>8) d.textContent=`${lbl}  $${lo.toString(16).toUpperCase().padStart(4,"0")}–$${hi.toString(16).toUpperCase().padStart(4,"0")}`;
+    bar.appendChild(d);
+  }
+  const m=document.createElement("div"); m.className="mark"; m.style.left=pct(t.code)+"%";
+  m.dataset.l="code $"+t.code.toString(16).toUpperCase().padStart(4,"0"); bar.appendChild(m);
+  if(t.vec!=null){ const v=document.createElement("div"); v.className="mark"; v.style.left=pct(t.vec)+"%";
+    v.dataset.l="RST"; bar.appendChild(v); }
+}
+// Clear §02 so a stale result never lingers under a new source/target.
+function resetResult(){
+  for(const id of ["findings","disasm","image","symbols","lbl","sym"]) $(id).textContent="—";
+  $("resMeta").textContent=""; $("anTag").textContent="";
+  $("status").innerHTML='Ready — press <span class="live">Assemble ▸</span>.';
+}
+function loadExample(){ const e=EXAMPLES[exSel.value]; $("src").value=e.src;
+  tSel.value=e.target; drawMap(); resetResult(); }
+
+exSel.onchange=loadExample;
+tSel.onchange=()=>{ drawMap(); resetResult(); };
+exSel.selectedIndex=0; loadExample();
+
+/* ── run ──────────────────────────────────────────────────── */
+const hexDump=(b,base)=>{ let s=""; for(let i=0;i<b.length;i+=16){
+  const a=(base+i).toString(16).toUpperCase().padStart(4,"0");
+  s+=`$${a}  ${[...b.slice(i,i+16)].map(x=>x.toString(16).padStart(2,"0").toUpperCase()).join(" ")}\n`;}
+  return s.trimEnd(); };
+
+// Layer-0 (auto load address + synthesized vectors + the target's
+// symbol pack) applies to the platform/bare targets when the source
+// doesn't drive its own segments. flat-64k / c64 use the object+linker
+// path. The page's "" target means "bare" → the engine's "raw".
+function modeFor(tv, source){
+  const layer0Target = (tv===""||tv==="sim-tui"||tv==="lcm-32"||tv==="raw");
+  const hasSegment = /^\s*\.segment\b/mi.test(source);
+  return { simple: layer0Target && !hasSegment, target: tv===""?"raw":tv };
+}
+
+async function doAssemble(){
+  $("status").innerHTML='<span class="live">Assembling…</span>';
+  const m=modeFor(tSel.value,$("src").value);
+  let r; try{ r=await asm.assemble({source:$("src").value,target:m.target,
+                 simple:m.simple,obj:$("obj").checked}); }
+  catch(e){ $("status").innerHTML='<span class="err">worker error: '+e.message+'</span>'; return null; }
+
+  const ids=["findings","disasm","image","symbols","lbl","sym"];
+  if(!r.success){
+    $("status").innerHTML='<span class="err">✗ assembly failed</span>';
+    $("findings").innerHTML='<span class="err">'+
+      r.errors.map(e=>e.rendered||e.message).join("\n")+'</span>';
+    for(const id of ids.slice(1)) $(id).textContent="—";
+    $("resMeta").textContent=""; $("anTag").textContent="";
+    return r;
+  }
+  const tv=tSel.value;
+  $("status").innerHTML=`<span class="ok">✓ OK</span> — ${TARGETS[tv].name} — `+
+    `${r.bytes.length} bytes @ $${r.origin.toString(16).toUpperCase().padStart(4,"0")}`+
+    (r.object?` — .o6 ${r.object.length} B`:"");
+  $("resMeta").textContent=`${r.bytes.length} B · origin $${r.origin.toString(16).toUpperCase().padStart(4,"0")}`;
+  $("image").textContent=hexDump(r.bytes,r.origin)||"(empty)";
+  $("symbols").textContent=r.symbols.length
+    ? r.symbols.map(s=>`${s.name.padEnd(18)} $${s.addr.toString(16).toUpperCase().padStart(4,"0")}  ${s.kind}`).join("\n")
+    : "(none — name & .export a value to see it here)";
+  $("lbl").textContent=r.lbl||"—";
+  $("sym").textContent=r.sym||"—";
+  $("disasm").textContent=r.disasm||"—";
+
+  const a=r.analysis||[];
+  const real=a.filter(f=>f.severity==="warning"||f.severity==="error");
+  $("anTag").innerHTML = real.length
+    ? `<span class="err">${real.length} finding${real.length>1?"s":""}</span>`
+    : `<span class="ok">clean</span>`;
+  $("findings").innerHTML = a.length===0
+    ? '<span class="ok">✓ no findings — every path the CPU can take looks sound for this target.</span>'
+    : a.map(f=>{
+        const c=(f.severity==="warning"||f.severity==="error")?"err":"note";
+        return `<span class="${c}">${f.severity}[${f.code}]  ${f.message}</span>`;
+      }).join("\n")
+      + (real.length? "" : '\n\n<span class="note">(only notes — these are analysis boundaries, not bugs)</span>');
+  return r;
+}
+$("run").onclick=doAssemble;
+
+/* ── copy: clipboard + feedback ───────────────────────────── */
+async function toClipboard(text){
+  try{ await navigator.clipboard.writeText(text); return true; }
+  catch{ const ta=document.createElement("textarea"); ta.value=text;
+    ta.style.position="fixed"; ta.style.left="-9999px"; document.body.appendChild(ta);
+    ta.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch{} ta.remove(); return ok; }
+}
+function flash(btn,label){ const o=btn.textContent; btn.textContent=label;
+  btn.classList.add("done"); setTimeout(()=>{btn.textContent=o;btn.classList.remove("done");},1500); }
+
+/* Generic: a section as clean, LLM-pasteable text (live textarea
+   values, selected options; UI chrome and tooltips stripped). */
+function sectionText(sec){
+  const c=sec.cloneNode(true);
+  c.querySelectorAll("textarea").forEach(ta=>{ const live=ta.id?document.getElementById(ta.id):ta;
+    const pre=document.createElement("pre"); pre.textContent=(live&&live.value)||""; ta.replaceWith(pre); });
+  c.querySelectorAll("select").forEach(s=>{ const live=s.id?document.getElementById(s.id):s;
+    const sp=document.createElement("div"); sp.textContent=(live&&live.selectedOptions[0]&&live.selectedOptions[0].text)||"";
+    s.replaceWith(sp); });
+  c.querySelectorAll(".copy,.aicopy,.i").forEach(e=>e.remove());
+  c.style.position="absolute"; c.style.left="-99999px"; document.body.appendChild(c);
+  const t=c.innerText.replace(/\n{3,}/g,"\n\n").trim(); c.remove(); return t;
+}
+document.addEventListener("click",async e=>{
+  const b=e.target.closest(".copy"); if(!b) return;
+  const sec=b.closest("section"); if(!sec) return;
+  flash(b, (await toClipboard(sectionText(sec)))?"[ copied ✓ ]":"[ failed ]");
+});
+
+/* One giant prompt-prefixed bundle for an LLM. Assembles first if
+   the result panels are empty so the dump is complete. */
+$("aiCopy").onclick=async()=>{
+  const btn=$("aiCopy");
+  if($("image").textContent.trim()==="—"||$("image").textContent.trim()===""){
+    await doAssemble();
+  }
+  const tv=tSel.value, T=TARGETS[tv];
+  const txt=(el)=>{ const v=$(el).innerText.trim(); return v&&v!=="—"?v:"(none)"; };
+  const bundle =
+`You are assisting with 6502 assembly. The following is a program and its
+build output from go6asm — an in-browser ca65-syntax 6502 cross-assembler,
+linker and static analyzer (NMOS 6502). ca65/ld65-compatible.
+
+TARGET: ${T.name}
+  ${T.desc}
+
+SOURCE (ca65 / 6502 assembly):
+\`\`\`asm
+${$("src").value.replace(/\s+$/,"")}
+\`\`\`
+
+BUILD: ${$("status").innerText.trim()||"(not assembled)"}
+
+STATIC ANALYSIS (paths the CPU can reach, checked against the target's
+memory map; honest about indirect/self-modifying code it can't follow):
+${txt("findings")}
+
+DISASSEMBLY (decoded bytes; data shown as .byte; the author's own ';'
+source comments threaded back in):
+${txt("disasm")}
+
+SYMBOLS (resolved names → addresses):
+${txt("symbols")}
+
+Please help with one of: explain a finding, suggest a fix, or optimize
+this code. Don't assume hardware details beyond the TARGET described above;
+ask if you need more.`;
+  flash(btn, (await toClipboard(bundle))?"✓ copied for AI":"copy failed");
+};
+</script>
+</body>
+</html>

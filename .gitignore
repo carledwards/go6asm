@@ -1,0 +1,17 @@
+# Build artifacts
+/bin/
+/go6asm
+/go6ld
+/go6dump
+*.wasm
+web/wasm_exec.js
+/dist/
+
+# Test / fuzz
+/testdata/fuzz/
+
+# OS
+.DS_Store
+
+# Local tooling
+.claude/

@@ -1,0 +1,48 @@
+# Builds the go6asm WebAssembly playground and publishes it to GitHub
+# Pages. The .wasm is a build artifact (gitignored) — it is compiled
+# here, never committed. One-time setup: repo Settings → Pages →
+# Build and deployment → Source: "GitHub Actions".
+name: Deploy playground to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege + the tokens the Pages deploy needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deploy at a time; let a newer push supersede an older.
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod   # pin to the repo's Go (1.26)
+      # Sanity-gate the deploy: don't publish a broken playground.
+      - run: make wasm-check
+      - run: make wasm-smoke        # Node end-to-end on the wasm API
+      - run: make site              # stages dist/ (built wasm + static files)
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
