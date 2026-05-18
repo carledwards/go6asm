@@ -409,10 +409,10 @@ import { Assembler } from "./go6asm.js";
 /* ── targets: friendly names + "where things are" memory maps ── */
 const TARGETS = {
   "sim-tui": {
-    name: "6502-sim-tui — teaching simulator",
+    name: "go6sim — teaching simulator",
     sub: "code @ $E000 · vectors $FFFA",
     desc: "The memory map of "
-        + "<a href='https://github.com/carledwards/6502-sim-tui' target='_blank' rel='noopener'>carledwards/6502-sim-tui</a>. "
+        + "<a href='https://github.com/carledwards/go6sim' target='_blank' rel='noopener'>carledwards/go6sim</a>. "
         + "Your program is an 8 KB ROM at $E000; "
         + "RAM is $0000–$1FFF; the VIC display and VIA timer live in I/O at $A000–$DFFF; "
         + "the 6502 reset/NMI/IRQ vectors sit at $FFFA. Layer-0 — just write instructions "

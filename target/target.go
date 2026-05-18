@@ -34,7 +34,7 @@ type Region struct {
 	Name     string
 }
 
-// simTUI mirrors 6502-sim-tui's documented memory map: ROM at $E000,
+// simTUI mirrors go6sim's documented memory map: ROM at $E000,
 // the 6502 vector block at $FFFA, and the VIC/VIA register names its
 // demos use (internal/demos/demos.go).
 var simTUI = &Target{
@@ -57,7 +57,7 @@ var simTUI = &Target{
 		"ViaT1L_L": 0xB006, "ViaT1L_H": 0xB007, "ViaACR": 0xB00B,
 		"ViaIFR": 0xB00D, "ViaIER": 0xB00E, "ViaT1Bit": 0x40,
 	},
-	// 6502-sim-tui memory map (internal/demos/demos.go header):
+	// go6sim memory map (internal/demos/demos.go header):
 	// RAM $0000-$1FFF, VIC planes/regs + VIA $A000-$DFFF, ROM
 	// $E000-$FFFF. $2000-$9FFF is unmapped — a store there is a bug.
 	Regions: []Region{

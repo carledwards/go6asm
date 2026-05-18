@@ -4,7 +4,7 @@
 // slice into bytes/strings; the caller owns any file I/O.
 //
 // go6asm owns the canonical symbol model (DESIGN §10.4); the JSON shape
-// here is that model. Consumers — e.g. 6502-sim-tui — adapt to it, not
+// here is that model. Consumers — e.g. go6sim — adapt to it, not
 // the reverse.
 package debug
 

@@ -31,7 +31,7 @@ const (
 )
 
 // Symbol is go6asm's own resolved-symbol model; consumers (e.g.
-// 6502-sim-tui) adapt to it (DESIGN §10.4).
+// go6sim) adapt to it (DESIGN §10.4).
 type Symbol struct {
 	Name string
 	Addr uint16

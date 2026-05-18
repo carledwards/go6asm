@@ -31,7 +31,7 @@ embedding the assembler in another Go program or a web page.
 - **First-class WASM.** A single `go6asm.Assemble(source string) Result`
   entry point that works identically in native, `js/wasm`, and `wasi/wasm`
   builds, with no filesystem dependencies in the wasm path.
-- **Integrates with `6502-sim-tui`.** Output structure matches what the
+- **Integrates with `go6sim`.** Output structure matches what the
   simulator's Memory/Disasm windows already consume via `bus.Labeller` and
   `asm.Symbol`, so an assembled program lights up the existing introspection
   UI without bespoke glue.
@@ -822,7 +822,7 @@ the API testable, and the security model simple.
 ### 10.3 Streaming and worker concerns
 
 `assemble` runs synchronously on whatever thread invokes it. For the
-6502-sim-tui editor, run it from a Web Worker so a slow large input doesn't
+go6sim editor, run it from a Web Worker so a slow large input doesn't
 block the UI. Pattern:
 
 ```js
@@ -839,11 +839,11 @@ WebAssembly.instantiateStreaming(fetch("go6asm.wasm"), go.importObject)
 self.onmessage = (e) => self.postMessage(go6asm.assemble(e.data));
 ```
 
-### 10.4 Integration with 6502-sim-tui
+### 10.4 Integration with go6sim
 
 Two integration paths, both supported:
 
-1. **Vendor as a Go module.** `6502-sim-tui` adds `go6asm` to its go.mod
+1. **Vendor as a Go module.** `go6sim` adds `go6asm` to its go.mod
    and exposes "Load .s file" alongside its existing fluent-asm demos.
    This brings ca65-syntax authoring into the TUI binary too, not just the
    browser. The `asm.Symbol` and per-PC comment outputs slot directly into
@@ -856,7 +856,7 @@ Two integration paths, both supported:
    annotations.
 
 go6asm owns the canonical symbol model; it is **not** shaped to match any
-consumer's struct. `6502-sim-tui`'s current `asm.Symbol`
+consumer's struct. `go6sim`'s current `asm.Symbol`
 (`Name string; Addr uint16; Size int; Note string`) and its `bus.Labeller`
 interface (`Symbols() []asm.Symbol`) are a *consumer* concern: when sim-tui
 is updated to load go6asm output, sim-tui owns the adapter from go6asm
@@ -1376,7 +1376,7 @@ verbose than JSON for human authorship).
 [target]
 name        = "sim-tui"
 cpu         = "6502"
-description = "carledwards/6502-sim-tui — 8KB RAM, VIC, 6522 VIA"
+description = "carledwards/go6sim — 8KB RAM, VIC, 6522 VIA"
 
 [load]
 # Default Layer 0 load address.
@@ -1811,7 +1811,7 @@ direction.
 ### 13.4 The simulator as an MCP server (the practical starting point)
 
 The most useful first integration isn't even the assembler — it's
-`6502-sim-tui` exposed as an MCP server, and we can ship that *first*,
+`go6sim` exposed as an MCP server, and we can ship that *first*,
 before any of the assembler MCP work. The simulator already has a Go
 codebase, a clear bus interface, a CPU backend, a display, and a wasm
 build. Adding an MCP transport on top is a contained piece of work that
@@ -1843,7 +1843,7 @@ coordinating both.
 
 A concrete v0 of the capability work, sized to *one weekend*:
 
-1. Add an `mcp` subcommand to `6502-sim-tui` that speaks MCP over stdio,
+1. Add an `mcp` subcommand to `go6sim` that speaks MCP over stdio,
    exposing four tools: `load`, `step`, `read`, `snapshot`.
 2. Point Claude Desktop (or any MCP client) at it.
 3. Try a session: "Load this binary I'll paste, step through the first
@@ -1866,7 +1866,7 @@ shell — fine. For any networked transport (HTTP MCP, for instance), it
 needs at least loopback-only by default and probably authentication.
 
 Real 6502 hardware isn't reachable here — the simulator is purely
-software. But the precedent matters: if `6502-sim-tui` someday talks to
+software. But the precedent matters: if `go6sim` someday talks to
 real silicon (you mentioned this as a long-term goal in the README), the
 capability protocol becomes a way to control physical hardware from a
 remote AI. That's a feature, but it's also a vulnerability surface
@@ -1977,7 +1977,7 @@ which pass found them.
   *consumer* of go6asm (see §10.4). The Klaus executor harness lives in its
   own submodule (`test/klaus`, separate `go.mod`) so the beevik dependency
   never enters importers' module graphs. Running go6asm output on
-  `6502-sim-tui`'s vetted interp is a *consumer-side* integration test
+  `go6sim`'s vetted interp is a *consumer-side* integration test
   owned by sim-tui, not a go6asm gate; it lands with sim-tui integration
   (Phase 4+).
 
@@ -2106,7 +2106,7 @@ What remains for Phase 4:
   all`) gzips `$(WASMOUT)` and fails if it exceeds `WASM_BUDGET`
   (default 2 MiB, §10.1). Current: ~1.01 MB gzipped (~50% of budget);
   fail path verified.
-- **Wire into 6502-sim-tui** (§10.4): make sim-tui a consumer —
+- **Wire into go6sim** (§10.4): make sim-tui a consumer —
   go6asm output (image + canonical symbols + per-PC comments) feeds
   sim-tui's Memory/Disasm views; sim-tui owns the adapter, go6asm
   stays canonical. Pure-wasm browser path *and* Go-module vendor path.
@@ -2162,7 +2162,7 @@ adapters (the established host pattern).
   `sim.writeMemory(origin,bytes)` + symbols → run. This is DESIGN
   §10.4 path 2. **The go6asm side is already complete** (Phase-4
   brick 1: the JS API returns linked bytes + canonical symbols +
-  sidecars). Remaining work is entirely in the `6502-sim-tui` repo
+  sidecars). Remaining work is entirely in the `go6sim` repo
   (its web build consumes the JS API). No server/socket/MCP.
 - **Plane 2 — MCP (headless/agent + hardware): two separate
   servers.** `mcp-go6asm` (assemble/link side) and `mcp-ultimate`
@@ -2180,7 +2180,7 @@ adapters (the established host pattern).
   MCP protocol now would be guessing): both MCP servers, the Ultimate
   transport, the sim-tui control socket.
 
-- **sim-tui migration (resolved direction).** 6502-sim-tui retires
+- **sim-tui migration (resolved direction).** go6sim retires
   its fluent Go-DSL `asm/` package and Go-authored `internal/demos`;
   demos become ca65 `.s` files assembled by go6asm and deployed into
   the simulator's ROM. One canonical assembler.
@@ -2195,7 +2195,7 @@ adapters (the established host pattern).
   placements (in-memory, no `.o6` format change; serialized `.o6`
   debug section remains post-v1). So Layer-0 / sim-tui ROMs carry
   comments too, which the annotated disassembler relies on.
-  **Integration WORKING (2026-05-16).** In `6502-sim-tui`: `go.mod`
+  **Integration WORKING (2026-05-16).** In `go6sim`: `go.mod`
   gains `replace github.com/carledwards/go6asm => ../go6asm` (a
   version pin replaces this before sim-tui is committed); a new
   `asm.FromSource`/`MustFromSource` adapter (its `asm` package, go6asm
@@ -2406,7 +2406,7 @@ adapters (the established host pattern).
     These confirm (or catch what static analysis had to admit it
     couldn't bound).
   It is a separate, optional execution mode (a `--profile` run /
-  toggle), not on by default. Implementation lives in `6502-sim-tui`;
+  toggle), not on by default. Implementation lives in `go6sim`;
   go6asm's contribution is the symbol/comment metadata it already
   emits. Deferred until after the static-analyzer roadmap settles.
 
@@ -2449,7 +2449,7 @@ These are deliberately unresolved. Decide before the relevant phase starts.
 1. **Module path / name.** *Resolved:* `github.com/carledwards/go6asm`
    (matches the sibling repos). "go6asm" stays the working name; revisit
    only if a clearly better name appears before the v1 tag.
-2. **License.** *Resolved:* MIT, matching `6502-sim-tui`. See `LICENSE`.
+2. **License.** *Resolved:* MIT, matching `go6sim`. See `LICENSE`.
 3. **Floating-point in expressions.** ca65 supports it for some directives.
    v1 says integers only. Revisit if a real use case shows up. *Resolved
    (related):* the integer value model is 32-bit signed with ca65
@@ -2475,7 +2475,7 @@ These are deliberately unresolved. Decide before the relevant phase starts.
 - Kick Assembler manual: <http://theweb.dk/KickAssembler/>
 - 6502.org instruction reference: <https://www.masswerk.at/6502/6502_instruction_set.html>
 - Klaus Dormann's 6502 test suite: <https://github.com/Klaus2m5/6502_65C02_functional_tests>
-- Your simulator: <https://github.com/carledwards/6502-sim-tui>
+- Your simulator: <https://github.com/carledwards/go6sim>
 - beevik/go6502 (existing Go reference): <https://github.com/beevik/go6502>
 
 ---
@@ -2494,7 +2494,7 @@ reset:
 @loop:
     LDA msg,X
     BEQ done
-    STA $A400,X            ; VIC char plane in 6502-sim-tui
+    STA $A400,X            ; VIC char plane in go6sim
     INX
     BNE @loop
 done:
