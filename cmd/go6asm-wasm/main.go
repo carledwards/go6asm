@@ -17,14 +17,30 @@ import (
 	"github.com/carledwards/go6asm/debug"
 	"github.com/carledwards/go6asm/diag"
 	"github.com/carledwards/go6asm/disasm"
+	"github.com/carledwards/go6asm/format"
 	"github.com/carledwards/go6asm/target"
 )
 
 func main() {
 	js.Global().Set("go6asm", js.ValueOf(map[string]any{
 		"assemble": js.FuncOf(assemble),
+		"format":   js.FuncOf(formatSrc),
 	}))
 	select {} // keep the Go runtime alive for callbacks
+}
+
+// format({source}) -> {source} — the canonical pretty-printer. Total
+// and idempotent (see package format); never an error result, so the
+// caller can apply it on every keystroke/blur without guarding.
+func formatSrc(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return errResult("go6asm.format expects one options object")
+	}
+	src := args[0].Get("source")
+	if src.Type() != js.TypeString {
+		return errResult("go6asm.format: options.source must be a string")
+	}
+	return js.ValueOf(map[string]any{"source": format.Source(src.String())})
 }
 
 // assemble(opts) -> result. opts: { source?, files?, entry?, origin?,

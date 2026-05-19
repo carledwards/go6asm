@@ -98,9 +98,35 @@ require(path.join(__dirname, "wasm_exec.js")); // defines globalThis.Go
     process.exit(1);
   }
 
+  // Canonical formatter (DESIGN §10): total, idempotent, never an error
+  // result — the editor applies it on every assemble without guarding.
+  const fmt = globalThis.go6asm.format({
+    source: "; a counter\n   LDX #$00\nloop:STX ViaBase;show it\n  INX\n   JMP   loop      ; again\n",
+  });
+  const fwant =
+    "; a counter\n" +
+    "        LDX #$00\n" +
+    "loop:   STX ViaBase         ; show it\n" +
+    "        INX\n" +
+    "        JMP loop            ; again\n";
+  if (fmt.source !== fwant) {
+    console.error(`format mismatch:\n got ${JSON.stringify(fmt.source)}\nwant ${JSON.stringify(fwant)}`);
+    process.exit(1);
+  }
+  if (globalThis.go6asm.format({ source: fmt.source }).source !== fmt.source) {
+    console.error("format not idempotent:", JSON.stringify(fmt.source));
+    process.exit(1);
+  }
+  const fbad = globalThis.go6asm.format({ nope: 1 });
+  if (fbad.success !== false || !fbad.errors || !fbad.errors.length) {
+    console.error("format(bad args) should be an error result, got:", JSON.stringify(fbad));
+    process.exit(1);
+  }
+
   console.log("WASM SMOKE OK — bytes:", hex, "origin:", r.origin.toString(16),
     "| link:", lhex, "obj:", lk.object.length + "B",
     "| comment:", JSON.stringify(cm.comments["0x0300"]),
+    "| fmt:", JSON.stringify(fmt.source.split("\n")[2]),
     "| analysis:", badMem.analysis.length + " findings");
   process.exit(0);
 })().catch((e) => {
