@@ -10,6 +10,10 @@ web/wasm_exec.js
 # Test / fuzz
 /testdata/fuzz/
 
+# Docs site (Astro / Node) build + dependency artifacts
+.astro/
+node_modules/
+
 # OS
 .DS_Store
 
