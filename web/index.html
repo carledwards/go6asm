@@ -5,18 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>go6asm — 6502 cross-assembler, in your browser</title>
 <meta name="description" content="A ca65-syntax 6502 cross-assembler, linker, and static analyzer that runs entirely in the browser via WebAssembly. No install, no server.">
+<script>
+  /* light/dark theme: pre-paint (remove with the :root.light block + #theme-toggle for dark-only) */
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var light = saved === 'light' ||
+        (!saved && window.matchMedia('(prefers-color-scheme: light)').matches);
+      if (light) document.documentElement.classList.add('light');
+    } catch (e) {}
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* palette: thecarledwards.com (Chirpy) dark */
   :root{
-    --ink:#0b0c0e; --ink2:#101216; --panel:#121419; --panel2:#15171d;
-    --line:#2a2d36; --line-soft:#1d2027;
-    --fg:#e8e6df; --fg-dim:#9a988e; --fg-faint:#6b6a63;
-    --amber:#f4a52a; --amber-soft:#caa15a; --amber-glow:rgba(244,165,42,.16);
-    --cyan:#5fb3b3; --bad:#e0563f; --warn:#e0563f; --good:#7fae5a;
+    color-scheme:dark;
+    --ink:#1b1b1e; --ink2:#1e1e1e; --panel:#1e1e1e; --panel2:#292929; --chip-bg:#292929;
+    --line:#333437; --line-soft:#292929;
+    --fg:#cccccc; --fg-dim:#afb0b1; --fg-faint:#717173; --link:#8ab4f8;
+    --amber:#f4a52a; --amber-soft:#caa15a; --amber-glow:rgba(244,165,42,.16); --amber-line:#3a3322;
+    --cyan:#5fb3b3; --bad:#e0563f; --warn:#e0563f; --good:#7fae5a; --good-line:#33402a;
+    --go-bg:#f4a52a; --go-fg:#1a1304; --go-edge:#9c6a12;
+    --shadow:rgba(0,0,0,.6); --reg-edge:rgba(0,0,0,.4); --scan:rgba(255,255,255,.014);
+    /* address-space bar regions */
+    --stripe-a:#19191b; --stripe-b:#222224;
+    --ram-a:#1c2e3a; --ram-b:#16242e; --ram-fg:#9fc8d8;
+    --io-a:#1d3530;  --io-b:#172a26;  --io-fg:#86c4b4;
+    --rom-a:#3a2f16; --rom-b:#2c2410; --rom-fg:#caa15a;
     --mono:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
     --disp:"Bricolage Grotesque",-apple-system,system-ui,sans-serif;
+  }
+  /* light palette — delete this block (and #theme-toggle + pre-paint script) for dark-only */
+  :root.light{
+    color-scheme:light;
+    --ink:#ffffff; --ink2:#f6f8fa; --panel:#f6f8fa; --panel2:#ffffff; --chip-bg:#e9ecef;
+    --line:#dee2e6; --line-soft:#e9ecef;
+    --fg:#2a2a2a; --fg-dim:#34343c; --fg-faint:#757575; --link:#0056b2;
+    --amber:#a8620a; --amber-soft:#8a5f12; --amber-glow:rgba(168,98,10,.14); --amber-line:#e6d3a8;
+    --cyan:#1f7a7a; --bad:#c0392b; --warn:#c0392b; --good:#3f7a22; --good-line:#b9d3a6;
+    --shadow:rgba(0,0,0,.12); --reg-edge:rgba(0,0,0,.12); --scan:transparent;
+    --stripe-a:#eceef1; --stripe-b:#f6f8fa;
+    --ram-a:#d3e4ef; --ram-b:#c4d9e8; --ram-fg:#24576e;
+    --io-a:#d2ebe3; --io-b:#c1e0d6; --io-fg:#245f52;
+    --rom-a:#f1e3c0; --rom-b:#e8d5a6; --rom-fg:#7a5410;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
@@ -26,10 +60,10 @@
     -webkit-font-smoothing:antialiased;
     background-image:
       radial-gradient(1200px 600px at 78% -10%, rgba(244,165,42,.05), transparent 60%),
-      repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 1px, transparent 1px 3px);
+      repeating-linear-gradient(0deg, var(--scan) 0 1px, transparent 1px 3px);
   }
-  a{color:var(--cyan);text-decoration:none;border-bottom:1px solid transparent}
-  a:hover{border-bottom-color:var(--cyan)}
+  a{color:var(--link);text-decoration:none;border-bottom:1px solid transparent}
+  a:hover{border-bottom-color:var(--link)}
   .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
   .mono{font-family:var(--mono)}
 
@@ -42,15 +76,22 @@
     border:1px solid var(--line);border-radius:2px;padding:5px 9px;color:var(--fg-dim);white-space:nowrap;
     display:inline-flex;align-items:center;gap:7px}
   .chip .dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good)}
-  .chip.cpu{color:var(--amber-soft);border-color:#3a3322}
+  .chip.cpu{color:var(--amber-soft);border-color:var(--amber-line)}
   .strip .spacer{flex:1}
   .aicopy{font-family:var(--mono);font-size:12px;letter-spacing:.03em;color:var(--amber);
     background:rgba(244,165,42,.06);border:1px solid var(--amber-soft);border-radius:3px;
     padding:8px 14px;cursor:pointer;transition:.14s}
   .aicopy:hover{background:rgba(244,165,42,.13);box-shadow:0 0 16px var(--amber-glow)}
-  .aicopy.done{color:var(--good);border-color:#33402a;background:rgba(127,174,90,.08)}
+  .aicopy.done{color:var(--good);border-color:var(--good-line);background:rgba(127,174,90,.08)}
   .strip nav{display:flex;gap:18px;font-size:13px;font-family:var(--mono)}
   .strip nav a{color:var(--fg-dim)}.strip nav a:hover{color:var(--amber)}
+  /* theme toggle (light/dark) — remove with :root.light for dark-only */
+  #theme-toggle{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;
+    background:transparent;border:0;border-radius:6px;color:var(--fg-faint);cursor:pointer;padding:0;transition:.14s}
+  #theme-toggle:hover{background:var(--chip-bg);color:var(--fg)}
+  .theme-ico-sun,.theme-ico-moon{display:none}
+  :root:not(.light) .theme-ico-sun{display:inline}
+  :root.light .theme-ico-moon{display:inline}
 
   /* ── hero line ────────────────────────────────────────────── */
   .hero{padding:40px 0 26px;border-bottom:1px solid var(--line-soft)}
@@ -73,7 +114,7 @@
   .stage{flex:1;min-width:150px;border:1px solid var(--line);border-radius:4px;
     background:var(--panel);padding:13px 14px;position:relative}
   .stage .sn{font-family:var(--mono);font-size:11px;color:var(--amber);
-    border:1px solid #3a3322;border-radius:50%;width:20px;height:20px;display:flex;
+    border:1px solid var(--amber-line);border-radius:50%;width:20px;height:20px;display:flex;
     align-items:center;justify-content:center;margin-bottom:9px}
   .stage b{font-family:var(--disp);font-weight:600;font-size:14px;display:block;margin-bottom:5px}
   .stage em{font-style:normal;color:var(--fg-faint);font-size:12px;line-height:1.45;display:block}
@@ -82,7 +123,7 @@
     background:transparent;color:var(--fg-faint);border:1px solid var(--line);border-radius:3px;
     padding:5px 10px;cursor:pointer;transition:.14s;white-space:nowrap}
   .copy:hover{color:var(--amber);border-color:var(--amber-soft)}
-  .copy.done{color:var(--good);border-color:#33402a}
+  .copy.done{color:var(--good);border-color:var(--good-line)}
   .arr{display:flex;align-items:center;color:var(--line);font-family:var(--mono);font-size:18px}
   @media(max-width:760px){.arr{display:none}.stage{min-width:46%}}
 
@@ -96,7 +137,7 @@
     width:280px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;
     padding:11px 13px;font-family:var(--disp);font-size:12.5px;line-height:1.5;color:var(--fg-dim);
     text-align:left;opacity:0;pointer-events:none;transition:.16s;z-index:50;
-    box-shadow:0 14px 40px rgba(0,0,0,.6)}
+    box-shadow:0 14px 40px var(--shadow)}
   .i .tip b{color:var(--fg);font-weight:600}
   .i .tip::before{content:"";position:absolute;left:50%;top:-5px;width:9px;height:9px;
     background:var(--panel2);border-left:1px solid var(--line);border-top:1px solid var(--line);
@@ -122,11 +163,11 @@
 
   /* assemble = momentary hardware switch */
   .go{font-family:var(--mono);font-weight:500;font-size:14px;letter-spacing:.04em;
-    background:var(--amber);color:#1a1304;border:none;border-radius:3px;
+    background:var(--go-bg);color:var(--go-fg);border:none;border-radius:3px;
     padding:11px 26px;cursor:pointer;position:relative;
-    box-shadow:0 3px 0 #9c6a12, 0 5px 14px var(--amber-glow);transition:transform .06s,box-shadow .06s}
+    box-shadow:0 3px 0 var(--go-edge), 0 5px 14px var(--amber-glow);transition:transform .06s,box-shadow .06s}
   .go:hover{filter:brightness(1.06)}
-  .go:active{transform:translateY(3px);box-shadow:0 0 0 #9c6a12,0 2px 8px var(--amber-glow)}
+  .go:active{transform:translateY(3px);box-shadow:0 0 0 var(--go-edge),0 2px 8px var(--amber-glow)}
 
   /* ── editor + targets ─────────────────────────────────────── */
   .editor{position:relative}
@@ -143,13 +184,13 @@
   /* address-space bar — the signature element */
   .map{padding:6px 16px 20px}
   .map-scale{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--fg-faint);margin-bottom:5px}
-  .bar{position:relative;height:34px;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:repeating-linear-gradient(45deg,#0e0f12 0 6px,#101216 6px 12px)}
+  .bar{position:relative;height:34px;border:1px solid var(--line);border-radius:3px;overflow:hidden;background:repeating-linear-gradient(45deg,var(--stripe-a) 0 6px,var(--stripe-b) 6px 12px)}
   .reg{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
     font-family:var(--mono);font-size:10px;letter-spacing:.04em;overflow:hidden;white-space:nowrap;
-    border-right:1px solid rgba(0,0,0,.4);transition:opacity .5s}
-  .reg.ram{background:linear-gradient(180deg,#1c2e3a,#16242e);color:#9fc8d8}
-  .reg.io{background:linear-gradient(180deg,#1d3530,#172a26);color:#86c4b4}
-  .reg.rom{background:linear-gradient(180deg,#3a2f16,#2c2410);color:var(--amber-soft)}
+    border-right:1px solid var(--reg-edge);transition:opacity .5s}
+  .reg.ram{background:linear-gradient(180deg,var(--ram-a),var(--ram-b));color:var(--ram-fg)}
+  .reg.io{background:linear-gradient(180deg,var(--io-a),var(--io-b));color:var(--io-fg)}
+  .reg.rom{background:linear-gradient(180deg,var(--rom-a),var(--rom-b));color:var(--rom-fg)}
   .mark{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--amber);z-index:4}
   .mark::after{content:attr(data-l);position:absolute;top:-17px;left:50%;transform:translateX(-50%);
     font-family:var(--mono);font-size:9px;color:var(--amber);white-space:nowrap}
@@ -195,6 +236,17 @@
       <a href="https://github.com/carledwards/go6asm" target="_blank" rel="noopener">Source</a>
       <a href="https://thecarledwards.com" target="_blank" rel="noopener">thecarledwards.com</a>
     </nav>
+    <!-- theme toggle (light/dark) — remove with :root.light for dark-only -->
+    <button type="button" id="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">
+      <svg class="theme-ico-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <svg class="theme-ico-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <script>
+      document.getElementById('theme-toggle').addEventListener('click', function () {
+        var light = document.documentElement.classList.toggle('light');
+        try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) {}
+      });
+    </script>
   </div>
 </header>
 
@@ -297,10 +349,10 @@
         <div class="map-scale"><span>$0000</span><span>$4000</span><span>$8000</span><span>$C000</span><span>$FFFF</span></div>
         <div class="bar" id="bar"></div>
         <div class="legend">
-          <span><i class="sw" style="background:#1c2e3a"></i> RAM</span>
-          <span><i class="sw" style="background:#1d3530"></i> I/O (VIC/VIA)</span>
-          <span><i class="sw" style="background:#3a2f16"></i> ROM</span>
-          <span><i class="sw" style="background:repeating-linear-gradient(45deg,#0e0f12 0 4px,#15171d 4px 8px)"></i> unmapped</span>
+          <span><i class="sw" style="background:var(--ram-a)"></i> RAM</span>
+          <span><i class="sw" style="background:var(--io-a)"></i> I/O (VIC/VIA)</span>
+          <span><i class="sw" style="background:var(--rom-a)"></i> ROM</span>
+          <span><i class="sw" style="background:repeating-linear-gradient(45deg,var(--stripe-a) 0 4px,var(--stripe-b) 4px 8px)"></i> unmapped</span>
           <span><i class="sw" style="background:var(--amber)"></i> code load / reset vector</span>
         </div>
       </div>

@@ -5,25 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>go6asm — language reference</title>
 <meta name="description" content="The complete go6asm assembler language reference: ca65-syntax 6502, the three authoring layers, directives, addressing modes, targets, objects, and the static analyzer.">
+<script>
+  /* light/dark theme: pre-paint (remove with the :root.light block + #theme-toggle for dark-only) */
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var light = saved === 'light' ||
+        (!saved && window.matchMedia('(prefers-color-scheme: light)').matches);
+      if (light) document.documentElement.classList.add('light');
+    } catch (e) {}
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* palette: thecarledwards.com (Chirpy) dark */
   :root{
-    --ink:#0b0c0e;--ink2:#101216;--panel:#121419;--line:#2a2d36;--line-soft:#1d2027;
-    --fg:#e8e6df;--fg-dim:#9a988e;--fg-faint:#6b6a63;--amber:#f4a52a;--amber-soft:#caa15a;
-    --cyan:#5fb3b3;--mono:"DM Mono",ui-monospace,Menlo,monospace;
+    color-scheme:dark;
+    --ink:#1b1b1e;--ink2:#1e1e1e;--panel:#1e1e1e;--chip-bg:#292929;--line:#333437;--line-soft:#292929;
+    --fg:#cccccc;--fg-dim:#afb0b1;--fg-faint:#717173;--link:#8ab4f8;--amber:#f4a52a;--amber-soft:#caa15a;
+    --cyan:#5fb3b3;--header-bg:rgba(27,27,30,.92);--scan:rgba(255,255,255,.012);
+    --mono:"DM Mono",ui-monospace,Menlo,monospace;
     --disp:"Bricolage Grotesque",-apple-system,system-ui,sans-serif;
+  }
+  /* light palette — delete this block (and #theme-toggle + pre-paint script) for dark-only */
+  :root.light{
+    color-scheme:light;
+    --ink:#ffffff;--ink2:#f6f8fa;--panel:#f6f8fa;--chip-bg:#e9ecef;--line:#dee2e6;--line-soft:#e9ecef;
+    --fg:#2a2a2a;--fg-dim:#34343c;--fg-faint:#757575;--link:#0056b2;--amber:#a8620a;--amber-soft:#8a5f12;
+    --cyan:#1f7a7a;--header-bg:rgba(255,255,255,.92);--scan:transparent;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   body{margin:0;background:var(--ink);color:var(--fg);font-family:var(--disp);font-size:15px;
     line-height:1.62;-webkit-font-smoothing:antialiased;
     background-image:radial-gradient(1100px 560px at 80% -10%,rgba(244,165,42,.045),transparent 60%),
-      repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px)}
-  a{color:var(--cyan);text-decoration:none}a:hover{border-bottom:1px solid var(--cyan)}
+      repeating-linear-gradient(0deg,var(--scan) 0 1px,transparent 1px 3px)}
+  a{color:var(--link);text-decoration:none}a:hover{border-bottom:1px solid var(--link)}
   code,.mono{font-family:var(--mono)}
-  header{border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(11,12,14,.92);
+  header{border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--header-bg);
     backdrop-filter:blur(6px);z-index:20}
   .strip{max-width:1180px;margin:0 auto;padding:14px 24px;display:flex;gap:18px;align-items:center}
   .brand{font-family:var(--mono);font-weight:500;font-size:19px;color:var(--fg)}
@@ -31,6 +52,14 @@
   .strip .sp{flex:1}
   .strip nav a{font-family:var(--mono);font-size:13px;color:var(--fg-dim);margin-left:18px}
   .strip nav a:hover{color:var(--amber)}
+  /* theme toggle (light/dark) — remove with :root.light for dark-only */
+  #theme-toggle{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;
+    background:transparent;border:0;border-radius:6px;color:var(--fg-faint);cursor:pointer;padding:0;
+    margin-left:14px;transition:.14s}
+  #theme-toggle:hover{background:var(--chip-bg);color:var(--fg)}
+  .theme-ico-sun,.theme-ico-moon{display:none}
+  :root:not(.light) .theme-ico-sun{display:inline}
+  :root.light .theme-ico-moon{display:inline}
   .layout{max-width:1180px;margin:0 auto;padding:0 24px;display:grid;
     grid-template-columns:220px 1fr;gap:48px}
   @media(max-width:900px){.layout{grid-template-columns:1fr;gap:0}aside{display:none}}
@@ -82,6 +111,17 @@
     <a href="https://github.com/carledwards/go6asm" target="_blank" rel="noopener">Source</a>
     <a href="https://thecarledwards.com" target="_blank" rel="noopener">thecarledwards.com</a>
   </nav>
+  <!-- theme toggle (light/dark) — remove with :root.light for dark-only -->
+  <button type="button" id="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">
+    <svg class="theme-ico-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    <svg class="theme-ico-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </button>
+  <script>
+    document.getElementById('theme-toggle').addEventListener('click', function () {
+      var light = document.documentElement.classList.toggle('light');
+      try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) {}
+    });
+  </script>
 </div></header>
 
 <div class="layout">
